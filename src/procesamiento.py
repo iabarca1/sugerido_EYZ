@@ -103,6 +103,7 @@ def extraer_datos(cnxn):
     AND dbo.MAEDDO.FEEMLI BETWEEN {d '2023-01-01'} AND getdate() --traemos info del 2023 a la fecha
     and dbo.MAEDDO.ESLIDO='C'
     AND dbo.MAEDDO.BOSULIDO='BCM'
+    and dbo.MAEDDO.CAPRCO2<>0
         '''
     consulta_niveldeservicio= pd.read_sql_query(consulta_niveldeservicio, cnxn)
     
@@ -130,6 +131,7 @@ def extraer_datos(cnxn):
     AND dbo.MAEDDO.FEEMLI BETWEEN {d '2023-01-01'} AND getdate() --traemos info del 2023 a la fecha
     and dbo.MAEDDO.ESLIDO<>'C'
     AND dbo.MAEDDO.BOSULIDO='BCM'
+    and dbo.MAEDDO.CAPRCO2<>0
     order by dbo.MAEDDO.CAPREX2/dbo.MAEDDO.CAPRCO2
      '''
     consulta_OCpendientes= pd.read_sql_query(consulta_OCpendientes, cnxn)
@@ -387,22 +389,81 @@ def extraer_datos(cnxn):
     # Ajustes: Redondear y reemplazar Nan
     sugerido_base["Unidades_Compra (UM2)"] = sugerido_base['Unidades_Compra (UM2)'].round()
     sugerido_base["Unidades_Compra (UM1)"] = sugerido_base['Unidades_Compra (UM1)'].round()
-    sugerido_base.fillna("Sin data disponible", inplace=True)
+    #sugerido_base.fillna("Sin data disponible", inplace=True)
 
-# Formato Output
-    sugerido_frontend=sugerido_base
-    columnas_porcentaje2 = ["Venta_%", "%Dias_Venta","Nivel_seguridad","Fill_Rate_mean"]
-    for columna in columnas_porcentaje2:
-        sugerido_frontend[columna] = sugerido_frontend[columna].apply(lambda x: f"{x:.2%}" if x != "Sin data disponible" else x)
+# Ajuste Finales: Columna Estado, Orden y Nombres
 
-    columnas_decimal2 = ["Tasa_Conversion", "Venta_Promedio","Venta_D.Est","Lead_Time_Promedio","Lead_Time_D.Est"]
-    for columna in columnas_decimal2:
-        sugerido_frontend[columna] = sugerido_frontend[columna].apply(lambda x: f"{x:.2f}" if x != "Sin data disponible" else x)
+    # Columna Estado
 
-    columnas_decimal0 = ["Stock_seguridad","Lead_Time_mean","Stock_Disponible","Unidades_Pendientes","Unidades_Compra (UM2)","Unidades_Compra (UM1)"]
-    for columna in columnas_decimal0:
-        sugerido_frontend[columna] = sugerido_frontend[columna].apply(lambda x: f"{x:.0f}" if x != "Sin data disponible" else x)
+    # Definir condiciones
+    condiciones = [
+        ((sugerido_base['Categoría_SKU'] == "Tipología 1") | (sugerido_base['Categoría_SKU'] == "Tipología 2")) & (sugerido_base["Stock_Disponible"] <= sugerido_base["Venta_Promedio"] * 2),
+        (sugerido_base["Stock_Disponible"] <= sugerido_base["Venta_Promedio"] * 2)
+    ]
 
-    sugerido_frontend["Venta_Acumulada"] = sugerido_frontend["Venta_Acumulada"].apply(lambda x: f"${x:,.0f}")
+    # Definir elecciones
+    elecciones = [
+        "Crítico",
+        "Urgente"
+    ]
+
+    # Aplicar condiciones
+    sugerido_base['Estado'] = np.select(condiciones, elecciones, default="Seguro")
+
+    #Re-ordenar data frame
+
+    nuevo_orden=['KOPR', 'Nombre_Producto','Familia_Principal','Categoría_SKU','Estado','Nivel_seguridad','Stock_seguridad','Punto_Re-orden',
+                'COD_PROV', 'NOMBRE_PROVEEDOR', 'Fill_Rate_mean', 'Lead_Time_mean', 'Stock_Disponible','Unidades_Pendientes', 'Unidades_Compra (UM1)','Unidades_Compra (UM2)','Unidad_Medida1', 'Unidad_Medida2','Tasa_Conversion',
+                'Venta_Acumulada', 'Venta_%', 'Venta_Promedio', 'Venta_D.Est', 'Dias_Venta','%Dias_Venta', 'Lead_Time_Promedio', 'Lead_Time_D.Est']
+
+    sugerido_base=sugerido_base[nuevo_orden]
+
+    #Cambiar nombres
+
+    sugerido_base.rename(columns={'KOPR':"Id_SKU",
+                                    'Nombre_Producto':"Nombre_SKU",
+                                    'Familia_Principal':"Familia_Principal",
+                                    'Categoría_SKU':"Categoria_SKU",
+                                    'Estado':"Estado",
+                                    'Nivel_seguridad':"Nivel_Seguridad",
+                                    'Stock_seguridad':"Stock_Seguridad",
+                                    'Punto_Re-orden':"Punto_Re-orden",
+                                    'COD_PROV':"Id_Proveedor",
+                                    'NOMBRE_PROVEEDOR':"Nombre_Proveedor",
+                                    'Fill_Rate_mean':"Nivel_Servicio_Proveedor",
+                                    'Lead_Time_mean':"Tiempo_Entrega_Proveedor",
+                                    'Stock_Disponible':"Stock_Disponible",
+                                    'Unidades_Pendientes':"Unidades_Pendientes",
+                                    'Unidades_Compra (UM1)':"Unidades_Compra1",
+                                    'Unidades_Compra (UM2)':"Unidades_Compra2",
+                                    'Unidad_Medida1':"Unidad_Medida1",
+                                    'Unidad_Medida2':"Unidad_Medida2",
+                                    'Tasa_Conversion':"Tasa_Conversion",
+                                    'Venta_Acumulada':"Venta_Acumulada",
+                                    'Venta_%':"%Venta_Acumulada",
+                                    'Venta_Promedio':"Venta_Diaria_Promedio",
+                                    'Venta_D.Est':"Venta_Diaria_D.Estandar",
+                                    'Dias_Venta':"Dias_Venta",
+                                    '%Dias_Venta':"%Dias_Venta", 
+                                    'Lead_Time_Promedio':"Tiempo_Entrega_Promedio_SKU",
+                                    'Lead_Time_D.Est':"Tiempo_Entrega_D.Estandar_SKU"}, 
+                            inplace=True)
     
-    return sugerido_frontend
+    # Lista de columnas a convertir
+    columnas_a_convertir = ["Nivel_Seguridad","Stock_Seguridad"]
+
+    # Convertir cada columna en la lista a float
+    for columna in columnas_a_convertir:
+        sugerido_base[columna] = sugerido_base[columna].astype(float)
+
+    # Definir un orden personalizado para la columna 'Estado'
+    estado_orden = pd.CategoricalDtype(['Crítico', 'Urgente', 'Seguro'], ordered=True)
+    sugerido_base['Estado'] = sugerido_base['Estado'].astype(estado_orden)
+
+    # Definir un orden personalizado para la columna 'Punto_Re-orden'
+    punto_Reorden_orden = pd.CategoricalDtype(['Compra', 'No_Compra'], ordered=True)
+    sugerido_base['Punto_Re-orden'] = sugerido_base['Punto_Re-orden'].astype(punto_Reorden_orden)
+
+    sugerido_base = sugerido_base.sort_values(by=["Categoria_SKU", "Estado","Punto_Re-orden"])
+
+    return sugerido_base

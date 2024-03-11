@@ -1,7 +1,11 @@
 import streamlit as st
 import pyodbc
 import time
-from procesamiento import extraer_datos  # Importa la función desde procesamiento.py
+from procesamiento import extraer_datos
+from formato_datos import transformacion_datos
+from alertas import alerta_estado
+from alertas import alerta_compra
+from descarga import archivo_excel
 
 def set_layout():
     st.set_page_config(page_title="Stock Assistant", layout="wide")
@@ -12,13 +16,16 @@ def apply_custom_styles():
         .stApp {
             background-color: white;
         }
-        /* Cambia el color de fondo de los mensajes st.info */
         .stAlert {
             background-color: black;
             color: white;
         }
         /* Estilo para el botón de ancho completo */
         div.stButton > button:first-child {
+            width: 100%;
+        }
+        /* Centrar el botón de descarga específicamente */
+        .centered-download-btn {
             width: 100%;
         }
         </style>
@@ -53,22 +60,43 @@ def main():
     display_header()
 
     if st.button("💡 Obtén tu Sugerido de Compra"):
+        success_message = st.empty()
+        info_message = st.empty()
         try:
             conn = init_connection()
-            time.sleep(1)  # Espera un segundo antes de mostrar el siguiente mensaje
-            st.success("Conexión exitosa")
-            time.sleep(1)  # Espera un segundo antes de mostrar el siguiente mensaje
-            # Muestra un mensaje de carga de datos
-            info_message = st.empty()
+            success_message.success("Conexión exitosa")
+            time.sleep(1)
+            success_message.empty()
             info_message.info('Cargando datos...')
-            # Usar st.spinner para mostrar el spinner durante la carga de datos
             with st.spinner('Por favor espera...'):
-                df = extraer_datos(conn)
-            info_message.empty()  # Limpia el mensaje de info
-            # Mostrar el DataFrame resultante en la aplicación
+                base = extraer_datos(conn)
+                df = transformacion_datos(base)
+            info_message.empty()
             st.dataframe(df)
+            texto_alerta_estado = alerta_estado(base)
+            st.warning(texto_alerta_estado)
+            texto_alerta_compra = alerta_compra(base)
+            st.warning(texto_alerta_compra)
+
+            # Mostrar el mensaje de carga antes del botón de descarga
+            carga_info = st.empty()
+            time.sleep(1)
+            carga_info.info('Preparando datos para descarga...')
+            with st.spinner('Por favor espera...'):
+                base = extraer_datos(conn)
+            # Descargar botón
+            st.download_button(
+                label="📥 Descargar Sugerido de Compra en Excel",
+                data=archivo_excel(base),
+                file_name='sugerido_compra.xlsx',
+                mime='application/vnd.ms-excel'
+            )
+            # Limpiar el mensaje de carga después de que el botón de descarga esté listo
+            carga_info.empty()
         except Exception as e:
-            st.error(f"Error al conectar a la base de datos: {e}")
+            success_message.empty()
+            info_message.empty()
+            st.error(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
